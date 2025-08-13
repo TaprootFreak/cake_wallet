@@ -1,5 +1,6 @@
 import 'package:cake_wallet/buy/buy_provider_config.dart';
 import 'package:cake_wallet/core/logger_service.dart';
+import 'package:cw_core/utils/print_verbose.dart';
 
 /// Central resource management for cleanup and disposal
 class ResourceManager {
@@ -36,14 +37,14 @@ class ResourceManager {
         try {
           callback();
         } catch (e) {
-          print('Error during cleanup: $e');
+          printV('Error during cleanup: $e');
         }
       }
       
       _cleanupCallbacks.clear();
       _isDisposed = true;
     } catch (e) {
-      print('Error during resource disposal: $e');
+      printV('Error during resource disposal: $e');
     }
   }
   
@@ -88,7 +89,7 @@ class ResourceManager {
         LoggerService.debug('Restored: $log', tag: 'ResourceManager');
       }
     } catch (e) {
-      print('Error during partial cleanup: $e');
+      printV('Error during partial cleanup: $e');
     }
   }
 }
