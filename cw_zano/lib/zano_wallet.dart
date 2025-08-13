@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert' as convert;
 import 'dart:core';
 import 'dart:io';
 import 'dart:math';
@@ -57,11 +58,6 @@ abstract class ZanoWalletBase
 
   @override
   String get password => _password;
-
-  @override
-  Future<String> signMessage(String message, {String? address = null}) {
-    throw UnimplementedError();
-  }
 
   @override
   Future<bool> verifyMessage(String message, String signature, {String? address = null}) {
