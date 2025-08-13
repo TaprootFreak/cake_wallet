@@ -461,7 +461,10 @@ abstract class BuySellViewModelBase extends WalletChangeListenerViewModel with S
           // Show message to user about currency switch
           currencyChangeMessage = fallbackResult.message;
           
-          // Recursively call with the fallback currency (without changing global state)
+          // Update the actual fiat currency to reflect the fallback
+          fiatCurrency = fallbackResult.currency;
+          
+          // Recursively call with the fallback currency
           await calculateBestRate(overrideFiatCurrency: fallbackResult.currency);
           return;
         }
