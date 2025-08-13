@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:cake_wallet/buy/buy_provider.dart';
 import 'package:cake_wallet/buy/buy_quote.dart';
+import 'package:cake_wallet/buy/currency_fallback_handler.dart';
 import 'package:cake_wallet/buy/onramper/onramper_buy_provider.dart';
 import 'package:cake_wallet/buy/payment_method.dart';
+import 'package:cake_wallet/buy/provider_wallet_address_manager.dart';
 import 'package:cake_wallet/buy/sell_buy_states.dart';
 import 'package:cake_wallet/core/selectable_option.dart';
 import 'package:cake_wallet/core/wallet_change_listener_view_model.dart';
@@ -126,6 +128,9 @@ abstract class BuySellViewModelBase extends WalletChangeListenerViewModel with S
 
   @observable
   String fiatAmount;
+  
+  @observable
+  String? currencyChangeMessage;
 
   @observable
   String cryptoCurrencyAddress;
@@ -166,6 +171,7 @@ abstract class BuySellViewModelBase extends WalletChangeListenerViewModel with S
     cryptoCurrency = wallet.currency;
     fiatCurrency = _appStore.settingsStore.fiatCurrency;
     isCryptoCurrencyAddressEnabled = !(cryptoCurrency == wallet.currency);
+    currencyChangeMessage = null;
     _initialize();
   }
 
@@ -345,8 +351,14 @@ abstract class BuySellViewModelBase extends WalletChangeListenerViewModel with S
   }
 
   String _getInitialCryptoCurrencyAddress() {
-    return cryptoCurrency == wallet.currency ? wallet.walletAddresses.address : '';
+    final addressManager = ProviderWalletAddressManager(
+      wallet: wallet,
+      cryptoCurrency: cryptoCurrency,
+      // Provider will be determined at quote time
+    );
+    return addressManager.getWalletAddress();
   }
+
 
   @action
   Future<void> _getAvailablePaymentTypes() async {
@@ -387,16 +399,19 @@ abstract class BuySellViewModelBase extends WalletChangeListenerViewModel with S
   }
 
   @action
-  Future<void> calculateBestRate() async {
+  Future<void> calculateBestRate({FiatCurrency? overrideFiatCurrency}) async {
     buySellQuotState = BuySellQuotLoading();
+    
+    // Use override currency if provided (for fallback), otherwise use the selected one
+    final effectiveFiatCurrency = overrideFiatCurrency ?? fiatCurrency;
 
     final List<BuyProvider> validProviders = providerList.where((provider) {
       if (isBuyAction) {
         return provider.supportedCryptoList.any((pair) =>
-        pair.from == cryptoCurrency && pair.to == fiatCurrency);
+        pair.from == cryptoCurrency && pair.to == effectiveFiatCurrency);
       } else {
         return provider.supportedFiatList.any((pair) =>
-        pair.from == fiatCurrency && pair.to == cryptoCurrency);
+        pair.from == effectiveFiatCurrency && pair.to == cryptoCurrency);
       }
     }).toList();
 
@@ -408,7 +423,7 @@ abstract class BuySellViewModelBase extends WalletChangeListenerViewModel with S
     final result = await Future.wait<List<Quote>?>(validProviders.map((element) => element
         .fetchQuote(
           cryptoCurrency: cryptoCurrency,
-          fiatCurrency: fiatCurrency,
+          fiatCurrency: effectiveFiatCurrency,
           amount: amount,
           paymentType: selectedPaymentMethod?.paymentMethodType,
           isBuyAction: isBuyAction,
@@ -429,6 +444,32 @@ abstract class BuySellViewModelBase extends WalletChangeListenerViewModel with S
         .toList();
 
     if (validQuotes.isEmpty) {
+      // Try currency fallback if no quotes found (only if not already in a fallback attempt)
+      if (overrideFiatCurrency == null) {  // We're not already in a fallback
+        final fallbackHandler = CurrencyFallbackHandler(
+          providers: providerList,
+          cryptoCurrency: cryptoCurrency,
+          amount: amount,
+          walletAddress: wallet.walletAddresses.address,
+          isBuyAction: isBuyAction,
+          paymentMethod: selectedPaymentMethod,
+        );
+        
+        final fallbackResult = await fallbackHandler.tryAllConfiguredFallbacks(effectiveFiatCurrency);
+        
+        if (fallbackResult != null) {
+          // Show message to user about currency switch
+          currencyChangeMessage = fallbackResult.message;
+          
+          // Update the actual fiat currency to reflect the fallback
+          fiatCurrency = fallbackResult.currency;
+          
+          // Recursively call with the fallback currency
+          await calculateBestRate(overrideFiatCurrency: fallbackResult.currency);
+          return;
+        }
+      }
+      
       buySellQuotState = BuySellQuotFailed();
       return;
     }
@@ -487,5 +528,24 @@ abstract class BuySellViewModelBase extends WalletChangeListenerViewModel with S
       isBuyAction: isBuyAction,
       cryptoCurrencyAddress: cryptoCurrencyAddress,
     );
+  }
+  
+  /// Dispose method to clean up resources
+  void dispose() {
+    // Clear observables
+    sortedRecommendedQuotes.clear();
+    sortedQuotes.clear();
+    paymentMethods.clear();
+    providerList.clear();
+    
+    // Reset state
+    selectedQuote = null;
+    bestRateQuote = null;
+    selectedPaymentMethod = null;
+    currencyChangeMessage = null;
+    
+    // Reset to initial states
+    paymentMethodState = InitialPaymentMethod();
+    buySellQuotState = InitialBuySellQuotState();
   }
 }

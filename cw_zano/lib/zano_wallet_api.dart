@@ -3,6 +3,7 @@ import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
 
+import 'package:cake_wallet/core/logger_service.dart';
 import 'package:cw_core/transaction_priority.dart';
 import 'package:cw_core/utils/print_verbose.dart';
 import 'package:cw_core/zano_asset.dart';
@@ -46,10 +47,10 @@ mixin ZanoWalletApi {
   void setPassword(String password) => zano.PlainWallet_resetWalletPassword(hWallet, password);
 
   void closeWallet(int? walletToClose, {bool force = false}) async {
-    printV('close_wallet ${walletToClose ?? hWallet}: $force');
+    LoggerService.debug('close_wallet ${walletToClose ?? hWallet}: $force', tag: 'Zano');
     if (Platform.isWindows || force) {
       final result = await _closeWallet(walletToClose ?? hWallet);
-      printV('close_wallet result $result');
+      LoggerService.debug('close_wallet result $result', tag: 'Zano');
       openWalletCache.removeWhere((_, cwr) => cwr.walletId == (walletToClose ?? hWallet));
     }
   }
@@ -133,14 +134,14 @@ mixin ZanoWalletApi {
   Future<GetWalletInfoResult> getWalletInfo() async {
     final json = await _getWalletInfo(hWallet);
     final result = GetWalletInfoResult.fromJson(jsonDecode(json));
-    printV('get_wallet_info got ${result.wi.balances.length} balances: ${result.wi.balances}');
+    LoggerService.debug('get_wallet_info got ${result.wi.balances.length} balances: ${result.wi.balances}', tag: 'Zano');
     return result;
   }
 
   Future<GetWalletStatusResult> getWalletStatus() async {
     final json = await _getWalletStatus(hWallet);
     if (json == Consts.errorWalletWrongId) {
-      printV('wrong wallet id');
+      LoggerService.error('wrong wallet id', tag: 'Zano');
       throw ZanoWalletException('Wrong wallet id');
     }
     final status = GetWalletStatusResult.fromJson(jsonDecode(json));
@@ -160,7 +161,7 @@ mixin ZanoWalletApi {
       jsonDecode(invokeResult);
     } catch (e) {
       if (invokeResult.contains(Consts.errorWalletWrongId)) throw ZanoWalletException('Wrong wallet id');
-      printV('exception in parsing json in invokeMethod: $invokeResult');
+      LoggerService.error('exception in parsing json in invokeMethod: $invokeResult', tag: 'Zano');
       rethrow;
     }
     return invokeResult;
@@ -228,6 +229,53 @@ mixin ZanoWalletApi {
     final map = jsonDecode(json) as Map<String, dynamic>?;
     _checkForErrors(map);
     return ProxyToDaemonResult.fromJson(map!['result'] as Map<String, dynamic>);
+  }
+
+  @override
+  Future<String> signMessage(String message, {String? address}) async {
+    try {
+      final messageBase64 = convert.base64.encode(convert.utf8.encode(message));
+      
+      final response = await invokeMethod('sign_message', {
+        'buff': messageBase64
+      });
+      
+      final responseData = jsonDecode(response) as Map<String, dynamic>;
+      
+      // Check for top-level errors first
+      if (responseData['error'] != null) {
+        final error = responseData['error'];
+        final code = error['code'] ?? '';
+        final message = error['message'] ?? 'Unknown error';
+        throw ZanoWalletException('Sign message failed: $message ($code)');
+      }
+      
+      final result = responseData['result'] as Map<String, dynamic>?;
+      if (result == null) {
+        throw ZanoWalletException('Invalid response from sign_message: no result');
+      }
+      
+      final signature = result['sig'] as String?;
+      if (signature == null) {
+        throw ZanoWalletException('No signature in response');
+      }
+      
+      // Basic validation: signature should be hex and have expected length
+      if (!RegExp(r'^[0-9a-fA-F]+$').hasMatch(signature)) {
+        throw ZanoWalletException('Invalid signature format: not hexadecimal');
+      }
+      
+      // Validate signature length (64 bytes = 128 hex chars)
+      const int expectedSignatureLength = 128;
+      if (signature.length != expectedSignatureLength) {
+        LoggerService.warning('Unexpected signature length', tag: 'Zano');
+      }
+      
+      return signature;
+    } catch (e) {
+      if (e is ZanoWalletException) rethrow;
+      throw ZanoWalletException('Failed to sign message: $e');
+    }
   }
 
   Future<ZanoAsset?> getAssetInfo(String assetId) async {
