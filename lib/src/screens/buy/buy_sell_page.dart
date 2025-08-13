@@ -149,6 +149,35 @@ class BuySellPage extends BasePage {
             bottomSection: Observer(
               builder: (_) => Column(
                 children: [
+                  if (buySellViewModel.currencyChangeMessage != null)
+                    Padding(
+                      padding: EdgeInsets.only(bottom: 15),
+                      child: Container(
+                        padding: EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.7),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              color: Theme.of(context).colorScheme.primary,
+                              size: 20,
+                            ),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                buySellViewModel.currencyChangeMessage!,
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Theme.of(context).colorScheme.onSurface,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   if (buySellViewModel.isBuySellQuotFailed)
                     Padding(
                       padding: EdgeInsets.only(bottom: 15),

@@ -112,7 +112,9 @@ class _DashboardPageState extends State<DashboardPage> {
       dashboardChild = getIt.get<DesktopSidebarWrapper>();
     }
 
-    return Scaffold(body: dashboardChild);
+    return Scaffold(
+      body: dashboardChild,
+    );
   }
 }
 

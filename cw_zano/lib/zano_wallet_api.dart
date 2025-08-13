@@ -29,6 +29,7 @@ import 'package:monero/src/generated_bindings_zano.g.dart' as zanoapi;
 import 'package:path/path.dart' as p;
 
 mixin ZanoWalletApi {
+  
   static const _maxReopenAttempts = 5;
   static const _logInfo = false;
   static const int _zanoMixinValue = 10;

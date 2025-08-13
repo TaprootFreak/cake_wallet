@@ -13,9 +13,9 @@ git clone $LIBWALLET_URL $LIBWALLET_PATH
 cd $LIBWALLET_PATH
 git checkout $LIBWALLET_VERSION
 
-SYSROOT=`xcrun --sdk iphoneos --show-sdk-path`
-CLANG="clang -target arm64-apple-ios -isysroot ${SYSROOT}"
-CLANGXX="clang++ -target arm64-apple-ios -isysroot ${SYSROOT}"
+SYSROOT=`xcrun --sdk iphonesimulator --show-sdk-path`
+CLANG="clang -target arm64-apple-ios-simulator -isysroot ${SYSROOT}"
+CLANGXX="clang++ -target arm64-apple-ios-simulator -isysroot ${SYSROOT}"
 
 if [[ -e ./build ]]; then
     rm -fr ./build
