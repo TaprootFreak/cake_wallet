@@ -113,11 +113,11 @@ class Libwallet {
           case "startsync":
             final name = args["name"] ?? "";
             final peers = args["peers"] ?? "";
-            final cName = name.toCString();
-            final cPeers = peers.toCString();
+            final payload = '{"name": "$name", "peers": "$peers"}';
+            final cPayload = payload.toCString();
             executePayloadFn(
-              fn: () => dcrwalletApi.syncWallet(cName, cPeers),
-              ptrsToFree: [cName, cPeers],
+              fn: () => dcrwalletApi.spvSync(cPayload),
+              ptrsToFree: [cPayload],
             );
             break;
           case "closewallet":
@@ -244,22 +244,20 @@ class Libwallet {
             final cAddress = address.toCString();
             final cPass = pass.toCString();
             res = executePayloadFn(
-              fn: () => dcrwalletApi.signMessage(cName, cMessage, cAddress, cPass),
-              ptrsToFree: [cName, cMessage, cAddress, cPass],
+              fn: () => dcrwalletApi.signMessage(cName, cPass, cAddress, cMessage),
+              ptrsToFree: [cName, cPass, cAddress, cMessage],
             );
             break;
           case "verifymessage":
-            final name = args["name"] ?? "";
             final message = args["message"] ?? "";
             final address = args["address"] ?? "";
             final sig = args["sig"] ?? "";
-            final cName = name.toCString();
             final cMessage = message.toCString();
             final cAddress = address.toCString();
             final cSig = sig.toCString();
             res = executePayloadFn(
-              fn: () => dcrwalletApi.verifyMessage(cName, cMessage, cAddress, cSig),
-              ptrsToFree: [cName, cMessage, cAddress, cSig],
+              fn: () => dcrwalletApi.verifyMessage(cAddress, cMessage, cSig),
+              ptrsToFree: [cMessage, cAddress, cSig],
             );
             break;
           case "newexternaladdress":
