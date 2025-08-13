@@ -1,6 +1,7 @@
 import 'dart:ffi';
 import 'package:ffi/ffi.dart';
 import 'dart:convert';
+import 'package:cw_decred/api/libdcrwallet_bindings.dart';
 
 class PayloadResult {
   final String payload;
@@ -13,11 +14,12 @@ class PayloadResult {
 // Executes the provided fn and converts the string response to a PayloadResult.
 // Returns payload, error code, and error.
 PayloadResult executePayloadFn({
-  required Pointer<Char> fn(),
+  required Pointer<NativePayloadResult> fn(),
   required List<Pointer> ptrsToFree,
   bool skipErrorCheck = false,
 }) {
-  final jsonStr = fn().toDartString();
+  final result = fn();
+  final jsonStr = result.ref.result.toDartString();
   freePointers(ptrsToFree);
   if (jsonStr == null) throw Exception("no json return from wallet library");
   final decoded = json.decode(jsonStr);
@@ -44,21 +46,6 @@ void checkErr(String err) {
 }
 
 extension StringUtil on String {
-  Pointer<Char> toCString() => toNativeUtf8().cast<Char>();
+  Pointer<Utf8> toCString() => toNativeUtf8();
 }
 
-extension CStringUtil on Pointer<Char> {
-  bool get isNull => address == nullptr.address;
-
-  free() {
-    malloc.free(this);
-  }
-
-  String? toDartString() {
-    if (isNull) return null;
-
-    final str = cast<Utf8>().toDartString();
-    free();
-    return str;
-  }
-}
