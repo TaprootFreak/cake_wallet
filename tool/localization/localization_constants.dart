@@ -1,6 +1,5 @@
 const textDirectionDeclaration = """
-      
-  @override
+  
   TextDirection get textDirection => TextDirection.ltr;
   
 """;
@@ -18,7 +17,7 @@ import \'dart:async\';
 import \'package:flutter/foundation.dart\';
 import \'package:flutter/material.dart\';
 
-class S implements WidgetsLocalizations {
+class S {
   const S();
 
   static late S current;
@@ -27,24 +26,6 @@ class S implements WidgetsLocalizations {
     GeneratedLocalizationsDelegate();
 
   static S of(BuildContext context) => Localizations.of<S>(context, S)!;
-
-  @override
-  String get reorderItemToStart => "reorderItemToStart";
-  
-  @override
-  String get reorderItemToEnd => "reorderItemToEnd";
-
-  @override
-  String get reorderItemUp => "reorderItemUp";
-
-  @override
-  String get reorderItemDown => "reorderItemDown";
-
-  @override
-  String get reorderItemLeft => "reorderItemLeft";
-
-  @override
-  String get reorderItemRight => "reorderItemRight";
 """;
 
 const part2 = """

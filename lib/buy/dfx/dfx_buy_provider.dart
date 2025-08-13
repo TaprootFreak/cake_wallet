@@ -1,8 +1,9 @@
 import 'dart:convert';
-import 'dart:developer';
 
 import 'package:cake_wallet/buy/buy_provider.dart';
 import 'package:cake_wallet/buy/buy_quote.dart';
+import 'package:cake_wallet/buy/dfx/dfx_authentication_service.dart';
+import 'package:cake_wallet/core/logger_service.dart';
 import 'package:cake_wallet/buy/pairs_utils.dart';
 import 'package:cake_wallet/buy/payment_method.dart';
 import 'package:cake_wallet/entities/fiat_currency.dart';
@@ -60,16 +61,8 @@ class DFXBuyProvider extends BuyProvider {
   bool get isAggregator => false;
 
   String get blockchain {
-    switch (wallet.type) {
-      case WalletType.bitcoin:
-      case WalletType.bitcoinCash:
-      case WalletType.litecoin:
-        return 'Bitcoin';
-      case WalletType.zano:
-        return 'Zano';
-      default:
-        return walletTypeToString(wallet.type);
-    }
+    final authService = DfxAuthenticationService();
+    return authService.getBlockchainName(wallet.type);
   }
 
 
@@ -122,22 +115,12 @@ class DFXBuyProvider extends BuyProvider {
   }
 
   Future<String> getSignature(String message, String walletAddress) async {
-    switch (wallet.type) {
-      case WalletType.ethereum:
-      case WalletType.polygon:
-      case WalletType.solana:
-      case WalletType.tron:
-        final r = await wallet.signMessage(message);
-        return r;
-      case WalletType.monero:
-      case WalletType.litecoin:
-      case WalletType.bitcoin:
-      case WalletType.bitcoinCash:
-      case WalletType.zano:
-        return await wallet.signMessage(message, address: walletAddress);
-      default:
-        throw Exception("WalletType is not available for DFX ${wallet.type}");
-    }
+    final authService = DfxAuthenticationService();
+    return await authService.authenticate(
+      wallet: wallet,
+      walletAddress: walletAddress,
+      message: message,
+    );
   }
 
   Future<Map<String, dynamic>> fetchFiatCredentials(String fiatCurrency) async {
@@ -153,51 +136,51 @@ class DFXBuyProvider extends BuyProvider {
         for (final item in data) {
           if (item['name'] == fiatCurrency) return item as Map<String, dynamic>;
         }
-        log('DFX does not support fiat: $fiatCurrency');
+        LoggerService.warning('DFX does not support fiat: $fiatCurrency', tag: 'DFX');
         return {};
       } else {
-        log('DFX Failed to fetch fiat currencies: ${response.statusCode}');
+        LoggerService.warning('DFX Failed to fetch fiat currencies: ${response.statusCode}', tag: 'DFX');
         return {};
       }
     } catch (e) {
-      printV('DFX Error fetching fiat currencies: $e');
+      LoggerService.error('Error fetching fiat currencies', error: e, tag: 'DFX');
       return {};
     }
   }
 
   Future<Map<String, dynamic>> fetchAssetCredential(String assetsName) async {
     final url = Uri.https(_baseUrl, '/v1/asset', {'blockchains': blockchain});
-    log('DFX: Fetching asset credential for: $assetsName, blockchain: $blockchain, URL: $url');
+    LoggerService.debug('Fetching asset credential for: $assetsName, blockchain: $blockchain, URL: $url', tag: 'DFX');
 
     try {
       final response = await ProxyWrapper().get(clearnetUri: url, headers: {'accept': 'application/json'});
       
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-        log('DFX: Asset API response: $responseData');
+        LoggerService.debug('Asset API response: $responseData', tag: 'DFX');
 
         if (responseData is List && responseData.isNotEmpty) {
-          log('DFX: Found ${responseData.length} assets');
+          LoggerService.debug('Found ${responseData.length} assets', tag: 'DFX');
           for (final i in responseData) {
-            log('DFX: Checking asset: ${i["dexName"]} (buyable: ${i["buyable"]}, sellable: ${i["sellable"]})');
+            LoggerService.debug('Checking asset: ${i["dexName"]} (buyable: ${i["buyable"]}, sellable: ${i["sellable"]})', tag: 'DFX');
             if (assetsName.toLowerCase() == i["dexName"].toString().toLowerCase()) {
-              log('DFX: Matched asset: $i');
+              LoggerService.debug('Matched asset: $i', tag: 'DFX');
               return i as Map<String, dynamic>;
             }
           }
-          log('DFX: Asset not found, returning first available: ${responseData.first}');
+          LoggerService.debug('Asset not found, returning first available: ${responseData.first}', tag: 'DFX');
           return responseData.first as Map<String, dynamic>;
         } else if (responseData is Map<String, dynamic>) {
-          log('DFX: Single asset response: $responseData');
+          LoggerService.debug('Single asset response: $responseData', tag: 'DFX');
           return responseData;
         } else {
-          log('DFX: Does not support this asset name : ${blockchain}');
+          LoggerService.debug('Does not support this asset name : ${blockchain}', tag: 'DFX');
         }
       } else {
-        log('DFX: Failed to fetch assets: ${response.statusCode}, body: ${response.body}');
+        LoggerService.debug('Failed to fetch assets: ${response.statusCode}, body: ${response.body}', tag: 'DFX');
       }
     } catch (e) {
-      log('DFX: Error fetching assets: $e');
+      LoggerService.debug('Error fetching assets: $e', tag: 'DFX');
     }
     return {};
   }
@@ -279,13 +262,13 @@ class DFXBuyProvider extends BuyProvider {
     // Check if asset is buyable/sellable for this action
     final actionKey = isBuyAction ? 'buyable' : 'sellable';
     if (assetCredentials[actionKey] != true) {
-      log('DFX: Asset ${cryptoCurrency.title} is not ${actionKey} (${actionKey}: ${assetCredentials[actionKey]})');
+      LoggerService.debug('Asset ${cryptoCurrency.title} is not ${actionKey} (${actionKey}: ${assetCredentials[actionKey]})', tag: 'DFX');
       return null;
     }
 
-    log('DFX: Fetching $action quote: ${isBuyAction ? cryptoCurrency : fiatCurrency} -> ${isBuyAction ? fiatCurrency : cryptoCurrency}, amount: $amount, paymentMethod: $paymentMethod');
-    log('DFX: FiatCredentials: $fiatCredentials');
-    log('DFX: AssetCredentials: $assetCredentials');
+    LoggerService.debug('Fetching $action quote: ${isBuyAction ? cryptoCurrency : fiatCurrency} -> ${isBuyAction ? fiatCurrency : cryptoCurrency}, amount: $amount, paymentMethod: $paymentMethod', tag: 'DFX');
+    LoggerService.debug('FiatCredentials: $fiatCredentials', tag: 'DFX');
+    LoggerService.debug('AssetCredentials: $assetCredentials', tag: 'DFX');
 
     final url = Uri.https(_baseUrl, '/v1/$action/quote');
     final headers = {'accept': 'application/json', 'Content-Type': 'application/json'};
@@ -297,8 +280,8 @@ class DFXBuyProvider extends BuyProvider {
       'paymentMethod': paymentMethod,
       'discountCode': ''
     });
-    log('DFX: Request URL: $url');
-    log('DFX: Request body: $body');
+    LoggerService.debug('Request URL: $url', tag: 'DFX');
+    LoggerService.debug('Request body: $body', tag: 'DFX');
 
     try {
       final response = await ProxyWrapper().put(
@@ -317,21 +300,21 @@ class DFXBuyProvider extends BuyProvider {
           quote.setCryptoCurrency = cryptoCurrency;
           return [quote];
         } else {
-          printV('DFX: Unexpected data type: ${responseData.runtimeType}');
+          LoggerService.warning('Unexpected data type: ${responseData.runtimeType}', tag: 'DFX');
           return null;
         }
       } else {
-        log('DFX: HTTP Status Code: ${response.statusCode}');
-        log('DFX: Response body: ${response.body}');
+        LoggerService.debug('HTTP Status Code: ${response.statusCode}', tag: 'DFX');
+        LoggerService.debug('Response body: ${response.body}', tag: 'DFX');
         if (responseData is Map<String, dynamic> && responseData.containsKey('message')) {
-          printV('DFX Error: ${responseData['message']}');
+          LoggerService.warning('Error: ${responseData['message']}', tag: 'DFX');
         } else {
-          printV('DFX Failed to fetch buy quote: ${response.statusCode}');
+          LoggerService.warning('Failed to fetch buy quote: ${response.statusCode}', tag: 'DFX');
         }
         return null;
       }
     } catch (e) {
-      printV('DFX Error fetching buy quote: $e');
+      LoggerService.error('Error fetching buy quote', error: e, tag: 'DFX');
       return null;
     }
   }
